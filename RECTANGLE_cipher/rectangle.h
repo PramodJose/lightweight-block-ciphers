@@ -1,7 +1,7 @@
 /*
 **	AUTHOR:	Pramod Jose
 **	GITHUB:	github.com/PramodJose
-**	DATE:	29 -03 -2019
+**	DATE:	29 March 2019
 */
 
 #ifndef _RECTANGLE_CIPHER_H
@@ -78,7 +78,52 @@ void s_box(uint8_t *x)
 
 // ------------------------ KEY SCHEDULE (128 BIT KEY) ------------------------
 
+void get_round_key(uint32_t main_key[], uint16_t sub_key[])
+{
+	int i, j;
+	uint8_t col_value, j_mask, col_bit, key_bit[4];
 
+	/*
+	**	For each of the 4 rows, we extract the rightmost 16 bits.
+	**	Total: 4 x 16 = 64 bit sub-key.
+	**	This forms the sub-key for the current round.
+	*/
+	for(i = 0; i < 4; ++i)
+		sub_key[i] = (uint16_t) (main_key[i] & 0x0000FFFF);
+
+
+	/*
+	**	For each of the 8 rightmost columns, we first need to construct the column
+	**	value, i.e., the hexadecimal value corresponding to the column.
+	**	Then, we use the S-Box to jumble up the bits and then write the resultant
+	**	hexadecimal value back to the main key.
+	*/
+	for(j = 0; j < 8; ++j)
+	{
+		col_value = 0;
+		j_mask = 1 << j;
+
+		// Constructing the column value.
+		for(i = 0; i < 4; ++i)
+		{
+			key_bit[i] = (main_key[i] & j_mask) > 0;
+			col_value |= (key_bit[i] << i);
+		}
+
+		// Use the S-Box to find the new column value...
+		s_box(&col_value);
+
+		// Writing the resultant hexadecimal value back to main_key.
+		for(i = 0; i < 4; ++i)
+		{
+			col_bit = ((col_value & (1 << i)) > 0);
+
+			/*	If the key bit and the col bit do not match, then flip the
+			**	main_key bit. */
+			main_key[i] ^= (key_bit[i] ^ col_bit) << j;
+		}
+	}
+}
 
 
 #endif

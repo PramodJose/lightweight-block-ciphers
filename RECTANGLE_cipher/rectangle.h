@@ -7,8 +7,18 @@
 #ifndef _RECTANGLE_CIPHER_H
 #define _RECTANGLE_CIPHER_H 1
 
-#include <stdint.h>
+/*	Definition for circular left shift.
+**	Parameter 1: num is the integer variable you want to shift
+**	Parameter 2: shift is the number of places you want to shift "num" by.
+**	Note: This definition has been adapted from en.wikipedia.org/wiki/Bitwise_operation#Circular_shifts
+**
+**	Example:
+**	uint8_t val = 0x97;
+**	val	= CLSH(val, 3);
+*/
+#define CLSH(num, shift) ((num << shift) | (num >> (-shift & (sizeof(num) * 8 - 1))))
 
+#include <stdint.h>
 
 /*
 **	Description: Defines/Emulates the LFSR used in the RECTANGLE cipher.
@@ -78,12 +88,13 @@ void s_box(uint8_t *x)
 
 // ------------------------ KEY SCHEDULE (128 BIT KEY) ------------------------
 
-void get_round_key(uint32_t main_key[], uint16_t sub_key[])
+void get_round_key(uint32_t main_key[], uint16_t sub_key[], uint8_t *row_constant)
 {
 	int i, j;
 	uint8_t col_value, j_mask, col_bit, key_bit[4];
 
 	/*
+	**	Step: Extracting the sub-key for the current round.
 	**	For each of the 4 rows, we extract the rightmost 16 bits.
 	**	Total: 4 x 16 = 64 bit sub-key.
 	**	This forms the sub-key for the current round.
@@ -93,6 +104,7 @@ void get_round_key(uint32_t main_key[], uint16_t sub_key[])
 
 
 	/*
+	**	Step: Applying the S-Box S to the 8 rightmost columns.
 	**	For each of the 8 rightmost columns, we first need to construct the column
 	**	value, i.e., the hexadecimal value corresponding to the column.
 	**	Then, we use the S-Box to jumble up the bits and then write the resultant
@@ -123,7 +135,38 @@ void get_round_key(uint32_t main_key[], uint16_t sub_key[])
 			main_key[i] ^= (key_bit[i] ^ col_bit) << j;
 		}
 	}
+
+
+	// Step: Applying a 1-round generalized Feistel transformation.
+	uint32_t row0 = main_key[0], row2 = main_key[2];
+	main_key[0] = CLSH(main_key[0], 8) ^ main_key[1];
+	main_key[2] = CLSH(main_key[2], 16) ^ main_key[3];
+	main_key[1] = row2;
+	main_key[3] = row0;
+
+
+	// Step: A 5-bit round constant is XORed with the 5-bit key state.
+	// Extracting the lower "5 bit key state"...
+	uint8_t lower_5_bits = (uint8_t) (main_key[0] & 0x0000001F);
+	lower_5_bits ^= *row_constant;
+
+	// Turn off lower 5 bits..and append the new lower 5 bits.
+	main_key[0] = (main_key[0] & 0xFFFFFFE0) | lower_5_bits;
+
+
+	// Update the row constant.
+	rectangle_LFSR(row_constant);
 }
+
+void get_k25(uint32_t main_key[], uint16_t sub_key[])
+{
+	int i;
+	// Extracting the key for the last AddRoundKey().
+	for(i = 0; i < 4; ++i)
+		sub_key[i] = (uint16_t) (main_key[i] & 0x0000FFFF);
+}
+
+
 
 
 #endif

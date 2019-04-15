@@ -295,7 +295,19 @@ uint16_t* get_key25(rcipher_params_t parameters)
 
 // ------------------------ ENCRYPTION ------------------------
 
-#define BLOCK_SIZE 8	// in bytes (and not bits).
+
+#define BLOCK_SIZE 8	
+/*
+**	Represents block size in bytes (and not bits). Also, it is assumed that the
+**	block size is a power of 2.	This fact is used to quickly determine whether
+**	the size of the plain text is a	multiple of the block size or not (in the
+**	encrypt() function). This check is performed using bit arithmetic which will
+**	only work if the block size is a power of 2. In case there is a requirement
+**	for supporting block sizes which are not a power of 2, then the check (of
+**	whether the plain text size is a multiple of block size or not) can be done
+**	using the modulo (remainder, %) operator. The rest of the code should work
+**	fine; although testing the code after modification is highly recommended.
+*/							
 
 union state
 {

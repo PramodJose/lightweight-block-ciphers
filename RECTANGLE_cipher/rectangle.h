@@ -311,14 +311,14 @@ uint16_t* get_key25(rcipher_params_t parameters)
 
 union state
 {
-	char ctext_block [BLOCK_SIZE];
+	unsigned char ctext_block [BLOCK_SIZE];
 	uint16_t byte_array [BLOCK_SIZE >> 1];
 };
 
 struct ciphertext
 {
 	size_t length;
-	char* ctext;
+	unsigned char* ctext;
 };
 
 typedef union state* state64_t;
@@ -393,6 +393,13 @@ char* encrypt_64bit_block(rcipher_params_t parameters, state64_t plaintext_state
 ciphertext_t encrypt(rcipher_params_t parameters, const char* ptext)
 {
 	ciphertext_t ctext_struct = malloc(sizeof(struct ciphertext));
+
+	if(ctext_struct == NULL)
+	{
+		perror("Could not allocate memory in encrypt(). File: rectangle.h\nError");
+		exit(2);
+	}
+
 	rcipher_params_t params = rectangle_init_copy(parameters);
 
 	size_t len = strlen(ptext) + 1, padded_len, ptext_pos, i;
@@ -405,6 +412,13 @@ ciphertext_t encrypt(rcipher_params_t parameters, const char* ptext)
 		padded_len = (len & BLOCK_SIZE) + BLOCK_SIZE;
 
 	ctext_struct->ctext = malloc(padded_len);
+
+	if(ctext_struct->ctext == NULL)
+	{
+		perror("Could not allocate memory in encrypt(). File: rectangle.h\nError");
+		exit(3);
+	}
+
 	ctext_struct->length = padded_len;
 	pad_byte = padded_len - len;
 

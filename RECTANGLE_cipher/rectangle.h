@@ -415,9 +415,6 @@ void destroy_string(string_t string)
 	}
 }
 
-// for testing
-#define HEX(x) (x > 9 ?('A' + (x - 10)) :('0' + x))
-
 char* encrypt_64bit_block(rcipher_params_t parameters, state64_t plaintext_state)
 {
 	uint8_t round_no, i, j;

@@ -21,6 +21,7 @@
 #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
+#include <errno.h>
 
 
 struct rcipher_params
@@ -49,7 +50,7 @@ rcipher_params_t rectangle_init()
 	if(parameters == NULL)
 	{
 		perror("Could not allocate memory in rectangle_init(). File: rectangle.h\nError");
-		exit(1);
+		exit(EXIT_FAILURE);
 	}
 
 	// Row constant has to be initialised to 0x1.
@@ -189,6 +190,30 @@ void s_box(uint8_t *x)
 		*x = table[*x];
 }
 
+void inverse_s_box(uint8_t *x)
+{
+	const uint8_t table[] = { 0x09,
+							  0x04,
+							  0x0f,
+							  0x0a,
+							  0x0e,
+							  0x01,
+							  0x00,
+							  0x06,
+							  0x0c,
+							  0x07,
+							  0x03,
+							  0x08,
+							  0x02,
+							  0x0b,
+							  0x05,
+							  0x0d
+							};
+
+	if(*x >= 0x00 && *x <= 0x0F)	// Basic error checking.
+		*x = table[*x];
+}
+
 
 // ------------------------ KEY SCHEDULE (128 BIT KEY) ------------------------
 
@@ -214,7 +239,6 @@ uint16_t* get_round_key(rcipher_params_t parameters)
 	*/
 	for(i = 0; i < 4; ++i)
 		parameters->sub_key[i] = (uint16_t) (parameters->main_key[i] & 0x0000FFFF);
-
 
 	/*
 	**	Step: Applying the S-Box S to the 8 rightmost columns.
@@ -307,34 +331,92 @@ uint16_t* get_key25(rcipher_params_t parameters)
 **	whether the plain text size is a multiple of block size or not) can be done
 **	using the modulo (remainder, %) operator. The rest of the code should work
 **	fine; although testing the code after modification is highly recommended.
+**	NB: It is also used in the declaration of union state to calculate the size
+**	of ints16.
 */							
 
 union state
 {
-	unsigned char ctext_block [BLOCK_SIZE];
-	uint16_t byte_array [BLOCK_SIZE >> 1];
+	unsigned char bytes [BLOCK_SIZE];
+	uint16_t ints16 [BLOCK_SIZE >> 1];
 };
 
-struct ciphertext
+struct string
 {
-	size_t length;
-	unsigned char* ctext;
+	ssize_t length;
+	unsigned char* str;
 };
 
 typedef union state* state64_t;
-typedef struct ciphertext* ciphertext_t;
+typedef struct string* string_t;
 
 
-void destroy_ctext(ciphertext_t ctext_struct)
+string_t init_string(char* text)
 {
-	if(ctext_struct != NULL)
+	ssize_t i = 0;
+
+	string_t s = malloc(sizeof(struct string));
+
+	if(s == NULL)
 	{
-		free(ctext_struct->ctext);
-		free(ctext_struct);
-		ctext_struct = NULL;
+		perror("Could not allocate memory in init_string(). File: rectangle.h\nError");
+		exit(EXIT_FAILURE);
+	}
+
+	s->length = strlen(text) + 1;
+	s->str = malloc(s->length);
+
+	if(s->str == NULL)
+	{
+		perror("Could not allocate memory in init_string(). File: rectangle.h\nError");
+		exit(EXIT_FAILURE);
+	}
+
+	while(s->str[i] = text[i])
+		++i;
+
+	return s;
+}
+
+string_t init_string_bytes(char* bytes, ssize_t length)
+{
+	ssize_t i = 0;
+
+	string_t s = malloc(sizeof(struct string));
+
+	if(s == NULL)
+	{
+		perror("Could not allocate memory in init_string_bytes(). File: rectangle.h\nError");
+		exit(EXIT_FAILURE);
+	}
+
+	s->length = length;
+	s->str = malloc(length);
+
+	if(s->str == NULL)
+	{
+		perror("Could not allocate memory in init_string_bytes(). File: rectangle.h\nError");
+		exit(EXIT_FAILURE);
+	}
+
+	for(; i < length; ++i)
+		s->str[i] = bytes[i];
+
+	return s;
+}
+
+void destroy_string(string_t string)
+{
+	if(string != NULL)
+	{
+		free(string->str);
+		free(string);
+		string = NULL;
 	}
 }
 
+// for testing
+#define HEX(x) (x > 9 ?('A' + (x - 10)) :('0' + x))
 
 char* encrypt_64bit_block(rcipher_params_t parameters, state64_t plaintext_state)
 {
@@ -350,8 +432,7 @@ char* encrypt_64bit_block(rcipher_params_t parameters, state64_t plaintext_state
 	
 		// Step: AddRoundKey(STATE, Ki): Simple XOR
 		for(i = 0; i < 4; ++i)
-			plaintext_state->byte_array[i] ^= parameters->sub_key[i];
-
+			plaintext_state->ints16[i] ^= parameters->sub_key[i];
 
 		// Step: SubColumn(STATE)
 		for(j = 0; j < 16; ++j)
@@ -361,7 +442,7 @@ char* encrypt_64bit_block(rcipher_params_t parameters, state64_t plaintext_state
 
 			for(i = 0; i < 4; ++i)
 			{
-				ptext_bit[i] = (plaintext_state->byte_array[i] & j_mask) > 0;
+				ptext_bit[i] = (plaintext_state->ints16[i] & j_mask) > 0;
 				col_j |= ptext_bit[i] << i;
 			}
 
@@ -370,77 +451,216 @@ char* encrypt_64bit_block(rcipher_params_t parameters, state64_t plaintext_state
 			for(i = 0; i < 4; ++i)
 			{
 				col_bit = (col_j & (1 << i)) > 0;
-				plaintext_state->byte_array[i] ^= (ptext_bit[i] ^ col_bit) << j;
+				plaintext_state->ints16[i] ^= (ptext_bit[i] ^ col_bit) << j;
 			}
 		}
 
 		// Step: ShiftRow(STATE)
-		plaintext_state->byte_array[1] = CLSH(plaintext_state->byte_array[1], 1);
-		plaintext_state->byte_array[2] = CLSH(plaintext_state->byte_array[2], 12);
-		plaintext_state->byte_array[3] = CLSH(plaintext_state->byte_array[3], 13);
+		plaintext_state->ints16[1] = CLSH(plaintext_state->ints16[1], 1);
+		plaintext_state->ints16[2] = CLSH(plaintext_state->ints16[2], 12);
+		plaintext_state->ints16[3] = CLSH(plaintext_state->ints16[3], 13);
 	}
 
 	// Step: AddRoundKey(STATE, K25)
 	get_key25(parameters);
 
 	for(i = 0; i < 4; ++i)
-		plaintext_state->byte_array[i] ^= parameters->sub_key[i];
+		plaintext_state->ints16[i] ^= parameters->sub_key[i];
 
-	return plaintext_state->ctext_block;
+	return plaintext_state->bytes;
 }
 
 
-ciphertext_t encrypt(rcipher_params_t parameters, const char* ptext)
+string_t encrypt(rcipher_params_t parameters, string_t ptext)
 {
-	ciphertext_t ctext_struct = malloc(sizeof(struct ciphertext));
+	string_t ctext = malloc(sizeof(struct string));
 
-	if(ctext_struct == NULL)
+	if(ctext == NULL)
 	{
 		perror("Could not allocate memory in encrypt(). File: rectangle.h\nError");
-		exit(2);
+		exit(EXIT_FAILURE);
 	}
 
 	rcipher_params_t params = rectangle_init_copy(parameters);
 
-	size_t len = strlen(ptext) + 1, padded_len, ptext_pos, i;
+	ssize_t padded_len, ptext_pos, i;
 	char pad_byte;
 	union state block;
 
-	if((len & (BLOCK_SIZE - 1)) == 0)		// string length is a multiple of BLOCK_SIZE
-		padded_len = len + BLOCK_SIZE;
+	if((ptext->length & (BLOCK_SIZE - 1)) == 0)		// string length is a multiple of BLOCK_SIZE
+		padded_len = ptext->length + BLOCK_SIZE;
 	else
-		padded_len = (len & BLOCK_SIZE) + BLOCK_SIZE;
-
-	ctext_struct->ctext = malloc(padded_len);
-
-	if(ctext_struct->ctext == NULL)
 	{
-		perror("Could not allocate memory in encrypt(). File: rectangle.h\nError");
-		exit(3);
+		padded_len = ~(BLOCK_SIZE - 1);
+		padded_len = (ptext->length & padded_len) + BLOCK_SIZE;
+		// For this bit arithmetic to work, padded_len and ptext->length should be of the exact same data type.
 	}
 
-	ctext_struct->length = padded_len;
-	pad_byte = padded_len - len;
+	ctext->str = malloc(padded_len);
 
+	if(ctext->str == NULL)
+	{
+		perror("Could not allocate memory in encrypt(). File: rectangle.h\nError");
+		free(ctext);
+		exit(EXIT_FAILURE);
+	}
+
+	ctext->length = padded_len;
+	pad_byte = padded_len - ptext->length;
 	
 	for(ptext_pos = 0; ptext_pos < padded_len;)
 	{
-		for(i = 0; i < BLOCK_SIZE && ptext_pos < len; ++i, ++ptext_pos)
-			block.ctext_block[i] = ptext[ptext_pos];
+		for(i = 0; i < BLOCK_SIZE && ptext_pos < ptext->length; ++i, ++ptext_pos)
+			block.bytes[i] = ptext->str[ptext_pos];
 
 		for(; i < BLOCK_SIZE; ++i, ++ptext_pos)
-			block.ctext_block[i] = pad_byte;
+			block.bytes[i] = pad_byte;
 
 		encrypt_64bit_block(params, &block);
 
 		for(i = 0; i < BLOCK_SIZE; ++i)
-			ctext_struct->ctext[ptext_pos - BLOCK_SIZE + i] = block.ctext_block[i];
+			ctext->str[ptext_pos - BLOCK_SIZE + i] = block.bytes[i];
 
 		rectangle_params_copy(params, parameters);
 	}
 
 	rectangle_destroy(params);
-	return ctext_struct;
+	return ctext;
+}
+
+
+// ------------------------ DECRYPTION ------------------------
+
+struct round_key
+{
+	uint16_t key[4];
+} round_keys[25];
+
+typedef struct round_key* round_key_t;
+
+
+round_key_t store_round_keys(rcipher_params_t parameters, round_key_t keys)
+{
+	uint8_t i, j;
+	rcipher_params_t params = rectangle_init_copy(parameters);
+
+	for(i = 0; i < 25; ++i)
+	{
+		if(i != 24)
+			get_round_key(params);
+		else
+			get_key25(params);
+
+		for(j = 0; j < 4; ++j)
+			keys[i].key[j] = params->sub_key[j];
+	}
+
+	rectangle_destroy(params);
+	return keys;
+}
+
+
+char* decrypt_64bit_block(rcipher_params_t parameters, state64_t ciphertext_state)
+{
+	uint8_t round_no, i, j;
+	uint8_t col_j, ctext_bit[4], col_bit;
+	uint16_t j_mask;
+
+	store_round_keys(parameters, round_keys);
+
+	for(round_no = 24; round_no > 0; --round_no)
+	{
+		// Step: AddRoundKey(STATE, Ki): Simple XOR
+		for(i = 0; i < 4; ++i)
+			ciphertext_state->ints16[i] ^= round_keys[round_no].key[i];
+
+		// Step: Inverse ShiftRow(STATE)
+		ciphertext_state->ints16[1] = CLSH(ciphertext_state->ints16[1], 15);
+		ciphertext_state->ints16[2] = CLSH(ciphertext_state->ints16[2], 4);
+		ciphertext_state->ints16[3] = CLSH(ciphertext_state->ints16[3], 3);
+
+		// Step: Inverse SubColumn(STATE)
+		for(j = 0; j < 16; ++j)
+		{
+			col_j = 0;
+			j_mask = 1 << j;
+
+			for(i = 0; i < 4; ++i)
+			{
+				ctext_bit[i] = (ciphertext_state->ints16[i] & j_mask) > 0;
+				col_j |= ctext_bit[i] << i;
+			}
+
+			inverse_s_box(&col_j);
+
+			for(i = 0; i < 4; ++i)
+			{
+				col_bit = (col_j & (1 << i)) > 0;
+				ciphertext_state->ints16[i] ^= (ctext_bit[i] ^ col_bit) << j;
+			}
+		}
+	}
+
+	// Step: AddRoundKey(STATE, K0)
+	for(i = 0; i < 4; ++i)
+			ciphertext_state->ints16[i] ^= round_keys[round_no].key[i];
+
+	return ciphertext_state->bytes;
+}
+
+string_t decrypt(rcipher_params_t parameters, string_t ctext)
+{
+	string_t ptext = malloc(sizeof(struct string));
+
+	if(ptext == NULL)
+	{
+		perror("Could not allocate memory in decrypt(). File: rectangle.h\nError");
+		exit(EXIT_FAILURE);
+	}
+
+	ptext->length = ctext->length;
+	ptext->str = malloc(ctext->length);
+
+	if(ptext->str == NULL)
+	{
+		perror("Could not allocate memory in decrypt(). File: rectangle.h\nError");
+		free(ptext);
+		exit(EXIT_FAILURE);
+	}
+
+	union state block;
+	ssize_t ctext_pos, i;
+	char pad_byte;
+
+	for(ctext_pos = 0; ctext_pos < ctext->length;)
+	{
+		for(i = 0; i < BLOCK_SIZE; ++i, ++ctext_pos)
+			block.bytes[i] = ctext->str[ctext_pos];
+
+		decrypt_64bit_block(parameters, &block);
+
+		for(i = 0; i < BLOCK_SIZE; ++i)
+			ptext->str[ctext_pos - BLOCK_SIZE + i] = block.bytes[i];
+	}
+
+	pad_byte = ptext->str[ptext->length - 1];
+	i = ptext->length - pad_byte;
+	if(i < 0)
+		i = 0;
+	
+	for(; i < ptext->length; ++i)
+		if(ptext->str[i] != pad_byte)
+		{
+			errno = EBADMSG;
+			perror("Error while decrypting! Possibly invalid key.\nError");
+			free(ptext->str);
+			free(ptext);
+			exit(EXIT_FAILURE);
+		}
+
+	ptext->length -= pad_byte;
+
+	return ptext;
 }
 
 #endif

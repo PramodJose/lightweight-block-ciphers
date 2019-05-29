@@ -1,7 +1,63 @@
 #include <stdio.h>
 #include <string.h>
+#include <time.h>
 #include "rectangle.h"
+
 #define HEX(x) (x > 9 ?('A' + (x - 10)) :('0' + x))
+
+typedef enum {start_timer, stop_timer} timer_state;
+
+void print_info();
+void print_in_hex(string_t);
+void timer(timer_state, char*);
+
+
+void main()
+{
+	int i, j;
+
+	// Input your 128 bit key here (as hex)...
+	uint32_t main_key[] = {	0x00000000,
+							0x00000000,
+							0x00000000,
+							0x00000000
+						};
+
+	rcipher_params_t cipher_params = rectangle_init_key(main_key);
+	string_t plaintext, ciphertext, decrypted_ptext;
+
+	// Input your plaintext here..
+	// ..either as a byte array..
+	char ptext[] = {0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00};
+	plaintext = init_string_bytes(ptext, sizeof(ptext));
+
+	// ..or as a string.
+	/*char *ptext = "The author of this piece of code is Pramod.";
+	plaintext = init_string(ptext);*/
+	
+	print_info();
+	printf("Plaintext in hex:\t");
+	print_in_hex(plaintext);
+
+	timer(start_timer, NULL);
+	ciphertext = encrypt(cipher_params, plaintext);
+	timer(stop_timer, "Encryption");
+
+	printf("Ciphertext in hex:\t");
+	print_in_hex(ciphertext);
+
+	timer(start_timer, NULL);
+	decrypted_ptext = decrypt(cipher_params, ciphertext);
+	timer(stop_timer, "Decryption");
+
+	printf("Decrypted ptext in hex:\t");
+	print_in_hex(decrypted_ptext);
+
+	destroy_string(decrypted_ptext);
+	destroy_string(plaintext);
+	destroy_string(ciphertext);
+	rectangle_destroy(cipher_params);
+}
 
 
 void print_info()
@@ -33,44 +89,26 @@ void print_in_hex(string_t string)
 	printf("\nString length:\t\t%ld\n\n", string->length);
 }
 
-void main()
+void timer(timer_state state, char* process_name)
 {
-	int i, j;
+	static struct timespec start = {0, 0}, end = {0, 0};
 
-	// Input your 128 bit key here (as hex)...
-	uint32_t main_key[] = {	0x00000000,
-							0x00000000,
-							0x00000000,
-							0x00000000
-						};
+	if(state == start_timer)
+		clock_gettime(CLOCK_MONOTONIC, &start);
+	else
+	{
+		long int seconds_elapsed, ns_elapsed;
+		clock_gettime(CLOCK_MONOTONIC, &end);
+		seconds_elapsed = end.tv_sec - start.tv_sec;
 
-	rcipher_params_t cipher_params = rectangle_init_key(main_key);
+		if(end.tv_nsec < start.tv_nsec)
+		{
+			--seconds_elapsed;
+			ns_elapsed = 1000000000 - start.tv_nsec + end.tv_nsec;
+		}
+		else
+			ns_elapsed = end.tv_nsec - start.tv_nsec;
 
-	// Input your plaintext here..
-	// ..either as a byte array..
-	char ptext[] = {0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00};
-	string_t plaintext = init_string_bytes(ptext, sizeof(ptext));
-
-	// ..or as a string.
-	/*char *ptext = "The author of this piece of code is Pramod.";
-	string_t plaintext = init_string(ptext);*/
-	
-	print_info();
-	printf("Plaintext in hex:\t");
-	print_in_hex(plaintext);
-
-	string_t ciphertext, decrypted_ptext;
-	ciphertext = encrypt(cipher_params, plaintext);
-
-	printf("Ciphertext in hex:\t");
-	print_in_hex(ciphertext);
-
-	decrypted_ptext = decrypt(cipher_params, ciphertext);
-	printf("Decrypted ptext in hex:\t");
-	print_in_hex(decrypted_ptext);
-
-	destroy_string(decrypted_ptext);
-	destroy_string(plaintext);
-	destroy_string(ciphertext);
-	rectangle_destroy(cipher_params);
+		printf("%s finished in %ld second(s) and %ld nanoseconds.\n\n", process_name, seconds_elapsed, ns_elapsed);
+	}
 }

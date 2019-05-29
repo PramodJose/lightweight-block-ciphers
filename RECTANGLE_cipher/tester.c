@@ -99,15 +99,15 @@ void timer(timer_state state, char* process_name)
 	{
 		long int seconds_elapsed, ns_elapsed;
 		clock_gettime(CLOCK_MONOTONIC, &end);
+		
 		seconds_elapsed = end.tv_sec - start.tv_sec;
+		ns_elapsed = end.tv_nsec - start.tv_nsec;
 
 		if(end.tv_nsec < start.tv_nsec)
 		{
 			--seconds_elapsed;
-			ns_elapsed = 1000000000 - start.tv_nsec + end.tv_nsec;
+			ns_elapsed += 1000000000;  
 		}
-		else
-			ns_elapsed = end.tv_nsec - start.tv_nsec;
 
 		printf("%s finished in %ld second(s) and %ld nanoseconds.\n\n", process_name, seconds_elapsed, ns_elapsed);
 	}

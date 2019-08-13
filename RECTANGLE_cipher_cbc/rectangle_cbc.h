@@ -427,7 +427,7 @@ char* encrypt_64bit_block(rcipher_params_t parameters, state64_t plaintext_state
 void encrypt(uint8_t* IV, uint8_t* key, FILE* ptext_stream, FILE* ctext_stream)
 {
 	uint32_t main_key[4] = {0};
-	int i, j, k;
+	int8_t i, j, k;
 	uint8_t buffer[9], pad_byte;
 	union state block;
 
@@ -603,6 +603,8 @@ void decrypt(uint8_t* IV, uint8_t* key, FILE* ptext_stream, FILE* ctext_stream)
 			IV[i] = IV_copy[i];
 		}
 	}
+
+	rectangle_destroy(cipher_params);
 }
 
 #endif

@@ -2,11 +2,13 @@
 #include <stdint.h>
 #include <unistd.h>
 #include <getopt.h>
+#include <time.h>
 #include "rectangle_cbc.h"
 
 #define ENCRYPT_MODE 1
 #define DECRYPT_MODE 2
 
+typedef enum {start_timer, stop_timer} timer_state;
 
 void parse_hex(char* dest, char* src, size_t size)
 {
@@ -24,6 +26,30 @@ void parse_hex(char* dest, char* src, size_t size)
 			sscanf(src + i, "%2hhx", &dest[j]);
 		else
 			dest[j] = 0;
+}
+
+void timer(timer_state state, char* process_name)
+{
+	static struct timespec start = {0, 0}, end = {0, 0};
+
+	if(state == start_timer)
+		clock_gettime(CLOCK_MONOTONIC, &start);
+	else
+	{
+		long int seconds_elapsed, ns_elapsed;
+		clock_gettime(CLOCK_MONOTONIC, &end);
+		
+		seconds_elapsed = end.tv_sec - start.tv_sec;
+		ns_elapsed = end.tv_nsec - start.tv_nsec;
+
+		if(end.tv_nsec < start.tv_nsec)
+		{
+			--seconds_elapsed;
+			ns_elapsed += 1000000000;  
+		}
+
+		printf("%s finished in %ld second(s) and %ld nanoseconds.\n\n", process_name, seconds_elapsed, ns_elapsed);
+	}
 }
 
 int main(int argc, char* argv[])
@@ -94,6 +120,7 @@ int main(int argc, char* argv[])
 				break;
 			case ':':
 				printf("This option needs an argument.\n");
+				error_flag = 1;
 				break;
 			case '?':
 			case 'h':
@@ -135,10 +162,12 @@ int main(int argc, char* argv[])
 	if(out_stream == NULL)
 		out_stream = stdout;
 
+	timer(start_timer, NULL);
 	if(mode == ENCRYPT_MODE)
 		encrypt(IV, key, in_stream, out_stream);
 	else if(mode == DECRYPT_MODE)
 		decrypt(IV, key, out_stream, in_stream);
+	timer(stop_timer, ((mode == ENCRYPT_MODE)? "Encryption" : ((mode == DECRYPT_MODE) ? "Decryption" : "NULL")));
 
 	fclose(in_stream);
 	fclose(out_stream);

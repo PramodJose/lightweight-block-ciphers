@@ -555,7 +555,7 @@ void decrypt(uint8_t* IV, uint8_t* key, FILE* ptext_stream, FILE* ctext_stream)
 {
 	uint32_t main_key[4] = {0};
 	int i, j, k;
-	uint8_t buffer[9], pad_byte, IV_copy[BLOCK_SIZE];
+	uint8_t buffer[BLOCK_SIZE + 1], pad_byte, IV_copy[BLOCK_SIZE];
 	union state block = {0};
 
 	// Building the main_key from the input key.
@@ -573,7 +573,7 @@ void decrypt(uint8_t* IV, uint8_t* key, FILE* ptext_stream, FILE* ctext_stream)
 		// if it is the last block, then we need to remove/check padding from the previous block.
 		if(k < BLOCK_SIZE)
 		{
-			uint8_t pad_byte = block.bytes[BLOCK_SIZE - 1];
+			pad_byte = block.bytes[BLOCK_SIZE - 1];
 
 			for(i = BLOCK_SIZE - pad_byte; i < BLOCK_SIZE; ++i)
 				if(block.bytes[i] != pad_byte)
@@ -586,6 +586,8 @@ void decrypt(uint8_t* IV, uint8_t* key, FILE* ptext_stream, FILE* ctext_stream)
 			fwrite(block.bytes, BLOCK_SIZE - pad_byte, sizeof(char), ptext_stream);
 			break;
 		}
+		// else if it is not the last block and it is is not the first time we entered the main loop,
+		// then write the last unencrypted block to the output stream.
 		else if(j)
 			fwrite(block.bytes, sizeof(char), BLOCK_SIZE, ptext_stream);
 

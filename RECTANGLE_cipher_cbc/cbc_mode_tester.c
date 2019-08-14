@@ -48,7 +48,7 @@ void timer(timer_state state, char* process_name)
 			ns_elapsed += 1000000000;  
 		}
 
-		printf("%s finished in %ld second(s) and %ld nanoseconds.\n\n", process_name, seconds_elapsed, ns_elapsed);
+		printf("%s finished in %ld second(s) and %09ld nanoseconds.\n\n", process_name, seconds_elapsed, ns_elapsed);
 	}
 }
 
